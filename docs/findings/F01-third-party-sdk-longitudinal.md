@@ -82,33 +82,100 @@ manifest 中仍宣告：
 **若真是完整移除，manifest 宣告與 API key 沒有理由留下**——
 宣告一個不存在的類別，該 service 啟動時會直接 ClassNotFoundException。
 
-### 已排除的假設
+## ✅ 已解決：百度 SDK 為真實移除，非隱藏於加殼 payload
 
-smali 全文檢索 `locSDK|RoadLine|patchtool|baidu|BDLocation|LocationClient`：
-**可見的 smali 中零命中**（僅 AndroidManifest 與簽章檔的檔案列表有）。
-`loadLibrary` 全列舉也**未見** `locSDK8a`、`RoadLineRebuildAPI` 或 `patchtool`。
+> 前一版將此列為未決疑點。經 1.6.4.0 與 1.6.8.0 的完整反編譯比對後，
+> **結論為假設 (a)：真實移除，殘留為建置衛生問題。**
 
-→ 原假設 (b)「可見程式碼中以 JNI 或反射呼叫」**已排除**。
+### 證據一：類別清單差異（apktool 全量比對）
 
-### 剩餘兩種假設
+1.6.4.0（6,015 類別）→ 1.6.8.0（5,722 類別）：**移除 296、新增 3**。
 
-- **(a) 不完整的移除** — 程式碼移除了，manifest／native／權限沒清乾淨。
-  屬供應鏈衛生問題，嚴重度低。但殘留範圍達六項，異常之大。
-- **(b) 移入加密 payload** — 百度 SDK 位於 `ijiami.ajm`（668 KB，見 **F03**），
-  執行期解密載入。若成立，「移除中國定位 SDK」的表象與實際不符，**嚴重度高**。
+| 移除的套件 | 類別數 |
+|---|---|
+| `com/tencent/bugly` | 163 |
+| `com/baidu/location` | 100 |
+| `com/baidu/lbsapi` | 19 |
+| `com/baidu/a` | 8 |
+| `com/ryzerobotics/tello` | **3** |
+| `com/tencent/rqd` | 1 |
+| 其他 | 2 |
 
-**加殼的存在使靜態分析無法分辨這兩者。必須動態驗證。**
+**296 個移除中有 290 個屬百度／騰訊**，是完整而外科式的移除。
 
-### 決定性測試
+新增的 3 個（`BindColorili`、`BaseFragmentActivityuam`、`BackgroundPosternhy`）
+名稱帶隨機三字母後綴，為**愛加密注入的誘餌類別**，非實際程式碼變更。
 
-Frida hook `System.loadLibrary` / `dlopen` / `ClassLoader.loadClass`，
-啟動 App 後觀察：
-- 是否載入 `liblocSDK8a.so` → 直接分辨 (a) 與 (b)
-- 是否出現 `com.baidu.*` 類別
-- `:remote` 程序是否真的啟動（`adb shell ps | grep remote`）
+### 證據二：膠合程式碼也被移除
 
-> 附帶：`libpatchtool.so` 同樣**未見任何 `loadLibrary` 呼叫**，狀況與 `liblocSDK8a.so` 相同。
-> 熱修補機制的實際存在與否，一併由上述動態測試回答。
+被移除的 3 個 Ryze 自家類別中，兩個正是百度整合的接點：
+
+`src:1.6.4.0:smali/com/ryzerobotics/tello/common/utils/o$b.smali`
+```smali
+.class Lcom/ryzerobotics/tello/common/utils/o$b;
+.implements Lcom/baidu/location/c;                       ← 百度定位監聽器
+.method public a(Lcom/baidu/location/BDLocation;)V       ← 定位回呼
+```
+
+`o$a` 為介面 `a([D)V`（座標陣列回呼）。**兩者在 1.6.8.0 皆不存在。**
+
+### 證據三：`LocationUtil` 被改寫為只用 Android 原生 API
+
+外層類別 `o`（`.source "LocationUtil.java"`）的**欄位宣告**比對
+（欄位宣告不受方法抽取影響，見 F03）：
+
+| 欄位 | 1.6.4.0 | 1.6.8.0 |
+|---|---|---|
+| `Lcom/baidu/location/LocationClient` | ✅ `c` | ❌ |
+| `Lcom/baidu/location/c`（監聽器） | ✅ `d` | ❌ |
+| `Landroid/location/LocationManager` | ✅ `e` | ✅ `a` |
+| `Landroid/location/Location` | ✅ `f` | ✅ `b` |
+| `Landroid/location/LocationListener` | ✅ `h` | ✅ `d` |
+| 檔案行數 | 671 | **349** |
+
+**1.6.4.0 為雙定位後端（百度 + Android 原生）；1.6.8.0 拆掉百度，只留 Android 原生。**
+
+### 證據四：字串池中相關字串全數消失
+
+| 字串 | 1.6.4.0 | 1.6.8.0 |
+|---|---|---|
+| `locSDK8a` | ✅ | ❌ |
+| `com.baidu.location` | ✅ | ❌ |
+| `BDLocation` | ✅ | ❌ |
+| `LocationClient` | ✅ | ❌ |
+| `com.baidu.lbsapi.API_KEY` | ✅ | ❌ |
+| `baidu` | ✅ | ❌ |
+| `bugly` / `BuglyNative` | ✅ | ❌ |
+| `dreamDroneParser` / `Gamesir` 等仍在用的 | ✅ | ✅ |
+
+`System.loadLibrary("locSDK8a")` 需要 `locSDK8a` 這個字串常數。
+dex 字串池完好（見 F03 的驗證），**該字串不存在 ⇒ 無任何方法載入該函式庫**。
+
+## 修正先前的一項推論
+
+先前主張「smali 全文檢索零命中 → 排除 JNI／反射呼叫」。
+**該推論無效**——呼叫點位於被抽走的方法主體中（89% 方法被抽取，見 F03）。
+
+結論已改以**字串池**為依據重新建立，如上。字串池不受方法抽取影響。
+
+## 殘留清單（已確認為死重）
+
+| 殘留物 | 狀態 |
+|---|---|
+| `liblocSDK8a.so` | 仍打包，但 `locSDK8a` 字串已不存在 → 無人載入 |
+| `libRoadLineRebuildAPI.so` | 仍打包；該字串在**兩個版本**皆不存在（研判由百度 native 內部 dlopen） |
+| `com.baidu.location.f` 服務宣告 | 仍在 manifest，但類別不存在 → 若被啟動會 ClassNotFoundException |
+| 百度 LBS API Key meta-data | 仍在 manifest，但已無程式碼讀取 |
+| `ACCESS_FINE/COARSE_LOCATION` | **不是殘留** — App 仍以 Android 原生 API 取位置 |
+
+> 位置權限先前被列為疑點，前提是「定位功能已移除」。
+> **該前提錯誤**：移除的只是百度這個後端，定位功能保留。權限合理。
+
+## 關於 `libpatchtool.so`
+
+`patchtool` 字串在**兩個版本的字串池皆不存在** → Java 層從未按名稱載入。
+其是否由 native 程式碼 `dlopen`，靜態無法判斷。
+熱修補機制的實際運作與否仍待動態驗證，但「Java 層主動觸發」已可排除。
 
 ## 觀測邊界
 
