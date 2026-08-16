@@ -26,6 +26,15 @@ import socket
 import sys
 import time
 
+# Windows 上 stdout 被重導向時預設為 cp1252，中文會直接拋 UnicodeEncodeError。
+# 必須在任何輸出之前處理，否則腳本會在第一行 print 就崩掉。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        if (_stream.encoding or "").lower().replace("-", "") != "utf8":
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 TELLO_IP = "192.168.10.1"
 CMD_PORT = 8889          # 命令（雙向）
 STATE_PORT = 8890        # 狀態廣播（無人機 → 本機）
