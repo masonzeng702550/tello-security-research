@@ -30,8 +30,15 @@ Tello App 自 1.3.0.0（2019-02）至 1.6.4.0（2022-09）內含 **百度定位 
 | `Lcom/tencent/bugly` | 128 | 132 | 131 | 132 | 167 | **0** |
 | `Lcom/ryzerobotics` | 890 | 1150 | 947 | 947 | 949 | 947 |
 
-`com.ryzerobotics` 在 1.6.8.0 維持 947，證明 dex 未被加殼或加密——
-因此「命中數為 0」是真實的移除，而非掃描失效。
+> ⚠️ **更正（見 F03）**：原本此處主張「`com.ryzerobotics` 維持 947 命中，
+> 證明 dex 未加殼，故命中數 0 是真實移除」。**這個推論的前提是錯的。**
+>
+> App 全部六版皆以**愛加密（Ijiami）加殼**（`assets/ijiami.ajm` + `ijm_lib/*/libexec.so`）。
+> 屬選擇性保護：部分類別留在可見 dex（故 `com.ryzerobotics` 可見），
+> 另有內容位於加密 payload，執行期解密載入。
+>
+> 因此正確的表述是：百度／Bugly 類別**在可見的 dex 中不存在**，
+> 而非「已從 App 移除」。差別很大，見下方「待解疑點」。
 
 ### 對應的 native library
 
@@ -52,17 +59,56 @@ Tello App 自 1.3.0.0（2019-02）至 1.6.4.0（2022-09）內含 **百度定位 
 
 **重現方式**：`tools/apk_quicklook.ps1`，原始資料於 `static/quicklook.json`
 
-## ⚠️ 尚未解答的關鍵疑點
+## ⚠️ 尚未解答的關鍵疑點（已大幅擴充）
 
-**1.6.8.0 移除了百度的 Java 類別與網域，卻仍保留 `liblocSDK8a.so` 與 `libRoadLineRebuildAPI.so`。**
+**1.6.8.0 的百度定位相關元件，七項中有六項仍然保留，只有 Java 類別在可見 dex 中消失。**
 
-三種可能，需逐一排除：
-- (a) 建置腳本疏漏，native 檔為無用殘留 → 最可能，但屬供應鏈衛生問題
-- (b) 仍透過其他路徑（JNI 直呼、反射、動態載入）使用
-- (c) 由 `libpatchtool.so` 的熱修補機制在執行期恢復
+| 項目 | 1.6.8.0 | 證據 |
+|---|---|---|
+| `com.baidu.location` 類別 | ❌ 可見 dex 中無 | `dex:1.6.8.0` 命中 0 |
+| `com.baidu.location.f` **服務宣告** | ✅ **仍在** | `src:1.6.8.0:AndroidManifest.xml:23` |
+| **百度 LBS API Key** | ✅ **仍在** | `src:1.6.8.0:AndroidManifest.xml:24` |
+| `liblocSDK8a.so` | ✅ **仍在** | `lib:1.6.8.0:liblocSDK8a.so` |
+| `libRoadLineRebuildAPI.so` | ✅ **仍在** | `lib:1.6.8.0:libRoadLineRebuildAPI.so` |
+| `ACCESS_FINE_LOCATION` | ✅ **仍在** | manifest 權限 |
+| `ACCESS_COARSE_LOCATION` | ✅ **仍在** | manifest 權限 |
 
-→ **必須以 Ghidra 檢視 1.6.8.0 的 `liblocSDK8a.so` 是否仍有可達的匯出函式，
-   並以 Frida hook `System.loadLibrary` 確認執行期是否被載入。**
+manifest 中仍宣告：
+```xml
+<service android:enabled="true" android:name="com.baidu.location.f" android:process=":remote"/>
+<meta-data android:name="com.baidu.lbsapi.API_KEY" android:value="NQuYO2K…nWCVp"/>
+```
+
+**若真是完整移除，manifest 宣告與 API key 沒有理由留下**——
+宣告一個不存在的類別，該 service 啟動時會直接 ClassNotFoundException。
+
+### 已排除的假設
+
+smali 全文檢索 `locSDK|RoadLine|patchtool|baidu|BDLocation|LocationClient`：
+**可見的 smali 中零命中**（僅 AndroidManifest 與簽章檔的檔案列表有）。
+`loadLibrary` 全列舉也**未見** `locSDK8a`、`RoadLineRebuildAPI` 或 `patchtool`。
+
+→ 原假設 (b)「可見程式碼中以 JNI 或反射呼叫」**已排除**。
+
+### 剩餘兩種假設
+
+- **(a) 不完整的移除** — 程式碼移除了，manifest／native／權限沒清乾淨。
+  屬供應鏈衛生問題，嚴重度低。但殘留範圍達六項，異常之大。
+- **(b) 移入加密 payload** — 百度 SDK 位於 `ijiami.ajm`（668 KB，見 **F03**），
+  執行期解密載入。若成立，「移除中國定位 SDK」的表象與實際不符，**嚴重度高**。
+
+**加殼的存在使靜態分析無法分辨這兩者。必須動態驗證。**
+
+### 決定性測試
+
+Frida hook `System.loadLibrary` / `dlopen` / `ClassLoader.loadClass`，
+啟動 App 後觀察：
+- 是否載入 `liblocSDK8a.so` → 直接分辨 (a) 與 (b)
+- 是否出現 `com.baidu.*` 類別
+- `:remote` 程序是否真的啟動（`adb shell ps | grep remote`）
+
+> 附帶：`libpatchtool.so` 同樣**未見任何 `loadLibrary` 呼叫**，狀況與 `liblocSDK8a.so` 相同。
+> 熱修補機制的實際存在與否，一併由上述動態測試回答。
 
 ## 觀測邊界
 
