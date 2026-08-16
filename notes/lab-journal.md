@@ -600,6 +600,65 @@ b()Lokhttp3/OkHttpClient;
 
 ---
 
+## 2026-08-17 — 官方來源交叉驗證，以及兩個新的分析標的
+
+### 1. 樣本來源鏈驗證通過
+
+自 `ryzerobotics.com` 官網取得 `TELLO_GOOGLEPLAY_release_2024-08-29_1.6.8.0_signed.apk`，
+與本專案 8/16 自 APKMirror 取得的 1.6.8.0 比對：
+
+```
+官網下載    31,618,407 bytes   b55f2e62cd4dff960e855a549c978f611f82683e86134a4bc9f2092b3703a8af
+APKMirror   31,618,407 bytes   b55f2e62cd4dff960e855a549c978f611f82683e86134a4bc9f2092b3703a8af
+```
+
+**位元組完全相同。** `versionCode 160800`、`targetSdk 30`、v1+v2 簽章通過、單一簽署者。
+
+意義：F01、F03、F04、F05、F07 全部錨定於官方建置產物，不再依賴鏡像的可信度。
+這解除了 MANIFEST 開頭列為研究前提的那項風險。
+
+### 2. 修正先前的敘述：「下架」的範圍
+
+先前寫「App 已下架，只能從第三方鏡像取得」。**這個敘述過寬。**
+
+實際情形：**Play 商店的上架頁已 404，但廠商官網仍直接散布 APK**
+（CDN 為 `dl-cdn.ryzerobotics.com`）。
+
+→ 正確說法是「自 Google Play 下架，廠商未停止散布」。已修正 MANIFEST。
+
+### 3. 官方檔名透露的線索：版本變體
+
+檔名為 `TELLO_**GOOGLEPLAY**_release_...`。既然建置流程以變體命名，
+**很可能存在其他變體**（如中國版）。
+
+若中國版存在且與 Google Play 版內容不同，**對 F05 是關鍵素材**——
+目前 F05 是以「同一支 APK 內建的中英文政策不同」立論；
+若連二進位檔本身都分版，論述強度會完全不同。待查。
+
+### 4. 官網下載頁發現兩個未分析的標的
+
+- **TELLO HERO APP** — 官網並列的第二支 App，本專案從未接觸
+- **`com.wistron.telloeduIN`**（Tello EDU）— **開發者為緯創資通（Wistron）**，
+  與 `com.ryzerobotics.tello` 完全不同的套件與發行者。
+  該 Play 頁面同樣回 404（2026-08-17 查證）
+- iOS 有**獨立的中國區 App Store 上架**（`id1453963643`），
+  與美國區（`id1330559633`）**App ID 不同** → iOS 確實分版發行。
+  這與第 3 點的變體推測方向一致，但屬 iOS，不直接適用於 Android
+
+### 5. 工具坑（第二次踩到）
+
+以 PowerShell 雙引號 here-string 做文字取代時，**反引號是轉義字元**，
+`` `r `` 被解讀為 CR，導致 `ryzerobotics.com` 被寫成 `yzerobotics.com` 並在行中插入裸 CR。
+
+→ 此類取代一律改用**單引號 here-string** `@'...'@`。
+已全專案掃描並確認其餘檔案無同類損壞。
+
+**下一步**
+- [ ] 查官網是否提供其他版本變體（中國版？）與舊版 APK
+- [ ] 評估是否將 TELLO HERO 與 Tello EDU（Wistron）納入研究範圍
+
+---
+
 ## <日期> — <標題>
 
 **目的**：

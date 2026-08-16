@@ -7,6 +7,8 @@
 - Package: `com.ryzerobotics.tello`
 - Developer: Shenzhen RYZE Tech Co.,Ltd
 - Google Play: **已下架**（2026-08-16 查證，`play.google.com/store/apps/details?id=com.ryzerobotics.tello` 回 404 / 「找不到」，en_US 與 zh_TW 皆同）
+- **但官網仍直接散布 APK**（2026-08-17 查證）：`ryzerobotics.com/tello/downloads` 仍提供下載，CDN 為 `dl-cdn.ryzerobotics.com`。
+  → 「下架」僅指 Play 商店，**廠商本身未停止散布**。此點修正了先前的敘述。
 
 ## 可取得版本（2026-08-16 調查）
 
@@ -79,6 +81,25 @@ features    : 6
 取得方式：`tools/fetch_apkmirror.ps1`（APKMirror 三段跳轉）；
 APKPure 兩支以 `curl.exe` 自 `d.apkpure.com/b/APK/com.ryzerobotics.tello?versionCode=<code>` 取得。
 `Invoke-WebRequest` 會被兩站以 TLS 指紋擋下（403），必須用 `curl.exe`。
+
+## ✅ 官方來源交叉驗證（2026-08-17）
+
+自 `ryzerobotics.com` 官網取得 `TELLO_GOOGLEPLAY_release_2024-08-29_1.6.8.0_signed.apk`，
+與本專案自 APKMirror 取得的 1.6.8.0 比對：
+
+```
+官網下載    31,618,407 bytes   b55f2e62cd4dff960e855a549c978f611f82683e86134a4bc9f2092b3703a8af
+APKMirror   31,618,407 bytes   b55f2e62cd4dff960e855a549c978f611f82683e86134a4bc9f2092b3703a8af
+                               ↑ 位元組完全相同
+```
+
+**意義**：APKMirror 的樣本即官方建置產物，未經任何改動。
+本專案所有基於 1.6.8.0 的發現（F01、F03、F04、F05、F07）
+皆錨定於官方來源的二進位檔，樣本來源鏈完整。
+
+官方檔名透露的資訊：
+- `GOOGLEPLAY` → **這是 Google Play 版本變體**，暗示可能存在其他變體（如中國版）
+- `2024-08-29` → 建置日期，APKMirror 於 2024-09-06 上架，相隔 8 天，一致
 
 ## 簽章基準（signing certificate baseline）✅ 已驗證
 
