@@ -33,6 +33,11 @@
 param(
     [string]$TelloSsid = "",
     [int]$ListenSeconds = 15,
+    # TC-L1-06：自不同來源埠重放唯讀查詢
+    [switch]$Replay,
+    # TC-L1-05：送 streamon 收 N 秒視訊後 streamoff。0 = 不做。
+    # 只切換影像輸出，不會轉動馬達，但會改變裝置狀態，故需明確指定。
+    [int]$VideoSeconds = 0,
     [string]$OutDir = "",
     [string]$Dumpcap = "C:\Program Files\Wireshark\dumpcap.exe"
 )
@@ -150,7 +155,10 @@ try {
     # 雙保險：腳本內已 reconfigure stdout，這裡再從環境變數指定一次。
     # Windows 上 Python 的 stdout 被重導向時預設 cp1252，中文輸出會拋 UnicodeEncodeError。
     $env:PYTHONIOENCODING = 'utf-8'
-    $probeOut = & python $probe --listen $ListenSeconds --json "$json" 2>&1
+    $probeArgs = @($probe, '--listen', $ListenSeconds, '--json', "$json", '--outdir', "$OutDir")
+    if ($Replay) { $probeArgs += '--replay' }
+    if ($VideoSeconds -gt 0) { $probeArgs += @('--video', $VideoSeconds) }
+    $probeOut = & python @probeArgs 2>&1
     $probeOut | ForEach-Object { Add-Content -Path $log -Value "    $_" -Encoding utf8 }
     $probeOut | Select-Object -Last 30 | ForEach-Object { Write-Host "    $_" }
 

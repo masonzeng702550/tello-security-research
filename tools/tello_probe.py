@@ -166,6 +166,140 @@ def listen_state(seconds: int = 10, verbose: bool = True) -> list:
     return samples
 
 
+def probe_video(seconds: int, outdir: str, verbose: bool = True) -> dict:
+    """
+    TC-L1-05 — 視訊串流是否明文可竊聽。
+
+    送出 streamon 後在 11111 收原始串流，檢查 H.264 NAL 起始碼，
+    並把 payload 串接存成 .h264 供 ffmpeg 還原畫面。結束後送 streamoff。
+
+    streamon / streamoff 只切換影像輸出，不會轉動馬達。
+    但它們會改變裝置狀態，因此本函式僅在明確指定 --video 時執行。
+    """
+    result = {"packets": 0, "bytes": 0, "nal_start_codes": 0, "file": None}
+
+    # 先綁 11111 再送 streamon，避免開頭的封包漏接
+    vid = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    vid.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+    vid.settimeout(3.0)
+    try:
+        vid.bind(("", VIDEO_PORT))
+    except OSError as e:
+        print(f"[!] 無法綁定 UDP {VIDEO_PORT}: {e}", file=sys.stderr)
+        return result
+
+    cmd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    cmd.settimeout(4.0)
+    try:
+        cmd.bind(("", CMD_PORT))
+    except OSError:
+        pass   # 已被本行程其他 socket 佔用時仍可送出
+
+    def send(c):
+        try:
+            cmd.sendto(c.encode(), (TELLO_IP, CMD_PORT))
+            data, _ = cmd.recvfrom(2048)
+            return data.decode("utf-8", errors="replace").strip()
+        except socket.timeout:
+            return "(逾時)"
+
+    if verbose:
+        print(f"\n[*] TC-L1-05 視訊串流（{seconds} 秒）")
+    print(f"  command   -> {send('command')}")
+    print(f"  streamon  -> {send('streamon')}")
+
+    chunks, end = [], time.time() + seconds
+    while time.time() < end:
+        try:
+            data, addr = vid.recvfrom(4096)
+            chunks.append(data)
+            result["packets"] += 1
+            result["bytes"] += len(data)
+        except socket.timeout:
+            break
+
+    print(f"  streamoff -> {send('streamoff')}")
+    vid.close(); cmd.close()
+
+    if chunks:
+        blob = b"".join(chunks)
+        # H.264 Annex-B 起始碼
+        result["nal_start_codes"] = blob.count(b"\x00\x00\x00\x01") + blob.count(b"\x00\x00\x01")
+        path = f"{outdir}/TC-L1-05_stream.h264" if outdir else "TC-L1-05_stream.h264"
+        with open(path, "wb") as f:
+            f.write(blob)
+        result["file"] = path
+        if verbose:
+            print(f"  收到 {result['packets']} 個封包 / {result['bytes']:,} bytes")
+            print(f"  H.264 NAL 起始碼: {result['nal_start_codes']} 個")
+            print(f"  原始串流已存: {path}")
+            print(f"  → 驗證畫面: ffmpeg -i {path} -frames:v 1 frame.png")
+    elif verbose:
+        print("  未收到任何視訊封包")
+
+    return result
+
+
+def probe_replay(verbose: bool = True) -> dict:
+    """
+    TC-L1-06 — 指令重放與來源綁定。
+
+    先以本機埠 8889 送出一個唯讀查詢，記下**位元組完全相同**的封包，
+    再從**另一個本機埠**原樣重送，觀察無人機是否照樣接受。
+
+    同時驗證兩件事：
+      - 協定有無重放保護（序號／時戳／MAC）
+      - 無人機有無把控制端綁定到特定來源
+    """
+    QUERY = b"battery?"
+    out = {"original": None, "replayed_from_alt_port": None, "alt_port": None}
+
+    if verbose:
+        print("\n[*] TC-L1-06 指令重放（唯讀查詢，不含飛行指令）")
+
+    a = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    a.settimeout(4.0)
+    try:
+        a.bind(("", CMD_PORT))
+    except OSError as e:
+        print(f"[!] 無法綁定 {CMD_PORT}: {e}", file=sys.stderr)
+        return out
+    try:
+        a.sendto(b"command", (TELLO_IP, CMD_PORT))
+        a.recvfrom(2048)
+        a.sendto(QUERY, (TELLO_IP, CMD_PORT))
+        data, _ = a.recvfrom(2048)
+        out["original"] = data.decode("utf-8", errors="replace").strip()
+        if verbose:
+            print(f"  原始送出（本機埠 {CMD_PORT}）: {QUERY!r} -> {out['original']}")
+    except socket.timeout:
+        if verbose:
+            print("  原始查詢逾時，中止重放測試")
+        a.close()
+        return out
+    a.close()
+    time.sleep(0.4)
+
+    # 從不同來源埠原樣重送同一組位元組
+    b = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    b.settimeout(4.0)
+    b.bind(("", 0))                      # 由系統指派任意來源埠
+    out["alt_port"] = b.getsockname()[1]
+    try:
+        b.sendto(QUERY, (TELLO_IP, CMD_PORT))
+        data, _ = b.recvfrom(2048)
+        out["replayed_from_alt_port"] = data.decode("utf-8", errors="replace").strip()
+        if verbose:
+            print(f"  重放送出（本機埠 {out['alt_port']}）: {QUERY!r} -> {out['replayed_from_alt_port']}")
+            print("  → 位元組完全相同的封包，自不同來源埠重送仍被接受")
+            print("     代表：無序號／時戳／訊息驗證碼，且未綁定控制端來源")
+    except socket.timeout:
+        if verbose:
+            print(f"  重放（本機埠 {out['alt_port']}）逾時 —— 可能有來源綁定，值得深究")
+    b.close()
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -173,6 +307,11 @@ def main():
     ap.add_argument("--no-listen", action="store_true", help="跳過狀態監聽")
     ap.add_argument("--timeout", type=float, default=4.0, help="單一指令逾時秒數")
     ap.add_argument("--json", metavar="FILE", help="結果另存 JSON")
+    ap.add_argument("--video", type=int, metavar="SEC", default=0,
+                    help="TC-L1-05：送 streamon 收 SEC 秒視訊後 streamoff（會改變裝置狀態，需明確指定）")
+    ap.add_argument("--replay", action="store_true",
+                    help="TC-L1-06：自不同來源埠重放唯讀查詢，測試重放保護與來源綁定")
+    ap.add_argument("--outdir", default=".", help="視訊串流輸出目錄")
     args = ap.parse_args()
 
     print("=" * 68)
@@ -190,6 +329,9 @@ def main():
 
     states = [] if args.no_listen else listen_state(args.listen)
 
+    replay = probe_replay() if args.replay else None
+    video = probe_video(args.video, args.outdir) if args.video > 0 else None
+
     ok = sum(1 for v in results.values() if v)
     print("\n" + "=" * 68)
     print(f"[結論] 在未提供任何認證的情況下，{ok}/{len(results)} 個查詢成功回應，")
@@ -198,10 +340,24 @@ def main():
     print("         並同時用 Wireshark 抓包作為佐證。")
     print("=" * 68)
 
+    if replay:
+        same = replay.get("replayed_from_alt_port") is not None
+        print(f"[TC-L1-06] 自不同來源埠重放同一位元組序列："
+              f"{'被接受 → 無重放保護、無來源綁定' if same else '被拒絕 → 值得深究'}")
+    if video:
+        print(f"[TC-L1-05] 視訊 11111：{video['packets']} 封包 / "
+              f"{video['bytes']:,} bytes / NAL 起始碼 {video['nal_start_codes']} 個"
+              f"{' → 明文 H.264' if video['nal_start_codes'] else ''}")
+    print("=" * 68)
+
     if args.json:
+        payload = {"queries": results, "state_samples": states}
+        if replay:
+            payload["replay"] = replay
+        if video:
+            payload["video"] = video
         with open(args.json, "w", encoding="utf-8") as f:
-            json.dump({"queries": results, "state_samples": states}, f,
-                      ensure_ascii=False, indent=2)
+            json.dump(payload, f, ensure_ascii=False, indent=2)
         print(f"\n[*] 已寫入 {args.json}")
 
 
