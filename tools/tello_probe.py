@@ -73,19 +73,59 @@ def probe(timeout: float = 4.0, verbose: bool = True) -> dict:
         print("    可能是另一個程式（官方 App？其他腳本？）正在佔用。", file=sys.stderr)
         return {}
 
+    def drain(s):
+        """清空 socket 緩衝區裡任何待處理的封包，回傳被丟棄的數量。"""
+        s.setblocking(False)
+        n = 0
+        try:
+            while True:
+                s.recvfrom(4096)
+                n += 1
+        except (BlockingIOError, OSError):
+            pass
+        finally:
+            s.setblocking(True)
+            s.settimeout(timeout)
+        return n
+
     results = {}
     for cmd, desc in QUERIES:
         if cmd.rstrip("?") in _FORBIDDEN:
             continue
+
+        # 送出前先清空緩衝區。無人機會在 8889 上主動推送 DJI 二進位協定封包
+        # （起始位元組 0xcc），若不清掉，第一次 recvfrom 會把它當成本次指令的回應，
+        # 導致其後每個查詢都收到「上一個指令」的回應，整串平移一格。
+        # 這個 bug 在 2026-08-16 的首次實機測試中真的發生了，見 F06。
+        dropped = drain(sock)
+
         try:
             sock.sendto(cmd.encode("utf-8"), (TELLO_IP, CMD_PORT))
-            data, addr = sock.recvfrom(2048)
-            reply = data.decode("utf-8", errors="replace").strip()
+
+            # 只接受文字協定的回應。二進位封包（0xcc 開頭）一律跳過並繼續等，
+            # 直到逾時為止 —— 不能假設一送一收。
+            deadline = time.time() + timeout
+            reply = None
+            skipped = dropped
+            while time.time() < deadline:
+                sock.settimeout(max(0.05, deadline - time.time()))
+                data, addr = sock.recvfrom(2048)
+                if data[:1] == b"\xcc":          # DJI 二進位協定，非本次查詢的回應
+                    skipped += 1
+                    continue
+                reply = data.decode("utf-8", errors="replace").strip()
+                break
+            sock.settimeout(timeout)
+
+            if reply is None:
+                raise socket.timeout()
             results[cmd] = reply
             if verbose:
-                print(f"  {cmd:<16} -> {reply:<28} # {desc}")
+                note = f" (略過 {skipped} 個二進位封包)" if skipped else ""
+                print(f"  {cmd:<16} -> {reply:<28} # {desc}{note}")
         except socket.timeout:
             results[cmd] = None
+            sock.settimeout(timeout)
             if verbose:
                 print(f"  {cmd:<16} -> (逾時)                      # {desc}")
         time.sleep(0.25)
