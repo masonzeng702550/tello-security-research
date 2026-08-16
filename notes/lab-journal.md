@@ -325,6 +325,59 @@ android:name="s.h.e.l.l.S"  android:appComponentFactory="s.h.e.l.l.A"
 
 ---
 
+## 2026-08-16 — Tello USB 埠有線介面測試（否定結果）
+
+**目的**：確認 Tello 的 Micro-USB 埠是否提供任何資料介面，
+以判定是否存在 Wi-Fi 之外的旁路。此問題影響 L1 的測試設計與 TC-L1-07 的可行性。
+
+**環境**：Windows 11、Tello（充電中）、USB 直連筆電
+
+**方法**：插入前後各做一次 `Get-PnpDevice -PresentOnly` 全裝置列舉，
+比對 InstanceId 差集；同時檢查 COM 埠、`adb devices` 與 System 事件記錄。
+
+**原始輸出**
+
+插入前：267 個裝置、無 COM 埠、adb 無裝置。
+插入後：268 個裝置。新增一項：
+
+```
+Status  Class  FriendlyName                             InstanceId
+Error   USB    Unknown USB Device (Set Address Failed)  USB\VID_0000&PID_0004\5&30C3FD28&0&4
+```
+
+- COM 埠：無
+- `adb devices`：無
+- System 事件記錄近 3 分鐘內無 USB／Kernel-PnP 事件
+
+**判讀**
+
+`Set Address Failed` 表示主機在匯流排上偵測到裝置、發出 SET_ADDRESS 要求，
+但對方未回應。`VID_0000&PID_0004` 是 Windows 讀不到裝置描述元時填入的預留值，
+非真實 VID/PID。
+
+→ **Tello 的對外 USB 埠只供充電，未實作 USB device 協定，無資料介面。**
+
+值得注意：若使用純充電線（D+/D- 未接），主機通常**完全偵測不到**裝置。
+本次 Windows 有偵測到並嘗試列舉，代表資料線是通的，
+未回應的是**裝置端**——此點反而強化了「埠本身不通資料」的結論。
+
+**觀測邊界**：尚未以另一條確認可傳資料的線材做對照測試。
+嚴格說線材因素未 100% 排除，但依上述理由可能性低。
+
+**對研究範圍的影響**
+
+1. **L1 全部走 Wi-Fi**——本即應如此。威脅模型的核心正是
+   「無需實體接觸即可接管」，有線測試反而繞過了要研究的攻擊面。
+2. **TC-L1-07（韌體升級）只能透過 App 的 Wi-Fi 升級流程被動觀察**，無旁路可用。
+3. 硬體 UART 焊點為唯一的有線可能，但需拆機焊接。
+   `02-threat-model.md` 已將硬體逆向排除在範圍外，且僅有一台機器，不執行。
+
+**下一步**
+- [ ] （可選）以確認可傳資料的線材做對照測試，完全排除線材因素
+- [ ] 電池充飽後執行 TC-L1-01 / 02 / 04
+
+---
+
 ## <日期> — <標題>
 
 **目的**：
