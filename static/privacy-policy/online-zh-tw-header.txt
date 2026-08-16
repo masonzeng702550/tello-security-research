@@ -1,0 +1,6 @@
+# Ryze 線上隱私權政策（自台灣連線取得）
+# 來源: https://www.ryzerobotics.com/zh-tw/policy
+# 取得時間: 2026-08-17
+# 註: /en/policy、/cn/policy、/jp/policy 皆被強制導向 /zh-tw/policy
+#     站台為 SPA，內容由 JS 依地區渲染，curl 僅能取得同一份殼
+#     頁尾顯示「中國台灣|繁體中文」，但內文為簡體中文
