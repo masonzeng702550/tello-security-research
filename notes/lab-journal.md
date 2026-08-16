@@ -478,6 +478,128 @@ Tello 的 **SSID 後綴即 BSSID 後三個位元組**——SSID 直接洩漏機�
 
 ---
 
+## 2026-08-16 — 無裝置靜態分析全批次（F01 解決、F03 大幅深化、新增 F07）
+
+**目的**：在取得 root 實機／模擬器之前，把所有不需裝置的靜態分析做完，
+盡可能縮小假設空間。
+
+**環境**：apktool 3.0.3 解出 1.3.0.0 / 1.6.4.0 / 1.6.8.0 三版
+（smali 檔案數 5895 / 6015 / 5722）
+
+### 1. F01 解決 — 百度 SDK 為真實移除
+
+**類別清單差異**（1.6.4.0 → 1.6.8.0）：移除 296、新增 3。
+其中 290/296 屬百度（127）與騰訊（164）。
+
+新增的 3 個名稱帶隨機三字母後綴（`BindColorili` 等）→ 愛加密的誘餌類別，
+非實際變更。
+
+**膠合程式碼也被移除**：
+```
+com/ryzerobotics/tello/common/utils/o$b
+    .implements Lcom/baidu/location/c;
+    .method public a(Lcom/baidu/location/BDLocation;)V
+```
+
+**`LocationUtil`（類別 `o`）被改寫**：1.6.4.0 是雙後端（百度 + Android 原生），
+1.6.8.0 拆掉百度只留原生，行數 671 → 349。
+
+**字串池**：`locSDK8a`、`com.baidu.location`、`BDLocation`、`LocationClient`、
+`com.baidu.lbsapi.API_KEY`、`bugly` 在 1.6.4.0 皆有、1.6.8.0 皆無。
+
+→ 假設 (a)「真實移除，殘留為建置衛生問題」**成立**。
+
+**同時修正一個錯誤前提**：我先前問「定位移除了為何保留位置權限」，
+但**定位功能沒有移除**，移除的只是百度這個後端。權限合理，不是殘留。
+
+### 2. F03 大幅深化 — 方法主體抽取（今日最重要）
+
+反編譯 `RYZEHttpsUtils` 時發現方法主體是空的：
+
+```smali
+.method public b()Lokhttp3/OkHttpClient;
+    .locals 1
+    const/4 v0, 0x0
+    return-object v0
+    nop
+.end method
+```
+
+`nop` 填充是為了保留原方法長度。這是愛加密的 **DEX 方法抽取**。
+
+**量化**：`com/ryzerobotics/**` 5,388 個方法中 **4,808 個（89.2%）被抽取**；
+okhttp3 也有 87.6%。**全面抽取，非選擇性。**
+
+`ijiami.ajm`：magic `indl01`，熵 **7.991**（近理論上限），667,978 bytes。
+載入點 `s/h/e/l/l/S:1818-1824`（`getAssets()` → `AssetManager.open()`）。
+
+**這切割了靜態分析的可信度**：
+- ✅ 類別清單、欄位宣告、方法簽章、**dex 字串池**、manifest、assets → 可信
+- ❌ 方法主體、呼叫點、控制流 → 完全不可信
+
+**字串池完好是關鍵補償**：已驗證 `aasky-net.cer` 等憑證檔名仍在池中，
+儘管不被任何可見方法引用。因抽取後的 bytecode 仍以原索引引用字串表，
+故「字串不在池中 ⇒ 無方法引用它」成立——F01 對 `locSDK8a` 的結論即建立於此。
+
+**必須撤回的一項推論**：先前「smali 零命中 → 排除 JNI／反射呼叫」無效，
+呼叫點就在被抽走的主體裡。已改以字串池重新建立結論。
+
+### 3. F04 — pinning 實作已定位但行為受阻
+
+找到 `RYZEHttpsUtils.java`（混淆為 `com/ryzerobotics/tello/common/c/d`）
+與 `RYZEStatisticsHttpsUtils.java`（`c/e`）。
+
+方法簽章明確：
+```
+a([Ljava/io/InputStream;)Ljavax/net/ssl/X509TrustManager;
+a([C)Ljava/security/KeyStore;
+b()Lokhttp3/OkHttpClient;
+```
+→ App **確實自行建構 TrustManager，輸入為憑證串流**。
+
+但方法主體全空（`a(...)` 300 行都是 nop）。**驗證行為靜態取不到，必須動態。**
+
+附帶：憑證檔名在字串池中 → **確實有方法引用它們，不是死檔案**。
+第三方 `HttpsUtils` 零呼叫，為未使用的函式庫程式碼。
+
+### 4. 新增 F07 — L2 攻擊面（否定結果）+ 未引用資產
+
+三版 manifest 全量比對：**exported="true" 為 0、receiver 為 0、
+自訂 scheme 為 0**，唯一 provider 是 FileProvider（exported=false）。
+未設 `networkSecurityConfig`（targetSdk 30 預設禁明文）。
+
+→ **L2 沒有可利用的問題。manifest 衛生相當好。**
+
+**但發現三個不被 dex 引用的資產**：
+| 檔案 | 大小 | 熵 |
+|---|---|---|
+| `assets/asr/common.jet` | **9.78 MB** | 5.664（結構化，未加密） |
+| `assets/af.bin` | 53 KB | 7.989（加密） |
+| `assets/signed.bin` | 37 KB | 7.995（加密） |
+
+`common.jet` magic 為 `v5pp` + 一組 MD5 樣式字串。asr = 語音辨識。
+**佔 APK 體積近三分之一，但 `common.jet`／`asr/` 皆不在字串池**。
+已檢索訊飛、百度語音、雲知聲、思必馳等 SDK 類別，**全部零命中**。
+（`msc` 的 65 次命中經上下文檢視為二進位偶然序列，非訊飛 MSC。）
+
+### 判讀
+
+今天最有價值的不是任何單一發現，而是**確立了「在加殼環境下，
+靜態分析什麼能信、什麼不能信」的界線**，並據此重建了 F01 的結論。
+
+另一個值得寫進報告的對比：**對外攻擊面設計謹慎（L2 全乾淨），
+但建置清理長期失修**——不存在的 service 宣告、失效的 API key、
+無人載入的 `.so`、過期 5–8 年的憑證、9.7 MB 的無用資產。
+問題不在安全意識，在**維護流程**，與產品線停售的背景一致。
+
+**下一步（皆需裝置）**
+- [ ] Frida hook `System.loadLibrary` / `ClassLoader.loadClass` → 覆核 F01
+- [ ] mitmproxy 掛自簽憑證 → 決定 F04 的 pinning 行為
+- [ ] 語系切換測試 → 決定 F05 對台灣使用者的適用性
+- [ ] 評估愛加密的反除錯強度（App 是否拒絕在 root／Frida 環境啟動）
+
+---
+
 ## <日期> — <標題>
 
 **目的**：
