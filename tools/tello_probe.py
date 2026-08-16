@@ -22,6 +22,7 @@ Tello 控制通道唯讀探測工具。
 
 import argparse
 import json
+import select
 import socket
 import sys
 import time
@@ -277,25 +278,47 @@ def probe_replay(verbose: bool = True) -> dict:
             print("  原始查詢逾時，中止重放測試")
         a.close()
         return out
-    a.close()
     time.sleep(0.4)
 
-    # 從不同來源埠原樣重送同一組位元組
+    # 自不同來源埠原樣重送同一組位元組。
+    #
+    # 關鍵：socket a（綁在 8889）必須保持開啟並一起監聽。
+    # 首次實測時只在 b 上等回應，結果誤判為「被拒絕」——
+    # 實際上無人機接受了指令，只是把回應**寫死送回 8889**。
+    # 必須同時監聽兩個 socket 才能分辨「拒絕執行」與「執行但回錯埠」。
     b = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    b.settimeout(4.0)
     b.bind(("", 0))                      # 由系統指派任意來源埠
     out["alt_port"] = b.getsockname()[1]
     try:
         b.sendto(QUERY, (TELLO_IP, CMD_PORT))
-        data, _ = b.recvfrom(2048)
-        out["replayed_from_alt_port"] = data.decode("utf-8", errors="replace").strip()
-        if verbose:
-            print(f"  重放送出（本機埠 {out['alt_port']}）: {QUERY!r} -> {out['replayed_from_alt_port']}")
-            print("  → 位元組完全相同的封包，自不同來源埠重送仍被接受")
-            print("     代表：無序號／時戳／訊息驗證碼，且未綁定控制端來源")
+        ready, _, _ = select.select([a, b], [], [], 4.0)
+        if not ready:
+            out["verdict"] = "no_response"
+            if verbose:
+                print(f"  重放（來源埠 {out['alt_port']}）：兩個 socket 皆無回應 → 指令未被執行")
+        else:
+            for s in ready:
+                data, _ = s.recvfrom(2048)
+                reply = data.decode("utf-8", errors="replace").strip()
+                where = "8889（原控制端埠）" if s is a else f"{out['alt_port']}（重放來源埠）"
+                out["replayed_from_alt_port"] = reply
+                out["reply_arrived_on"] = 8889 if s is a else out["alt_port"]
+                if verbose:
+                    print(f"  重放送出（來源埠 {out['alt_port']}）: {QUERY!r} -> {reply}")
+                    print(f"  回應抵達於: {where}")
+            if out.get("reply_arrived_on") == CMD_PORT:
+                out["verdict"] = "accepted_reply_to_8889"
+                if verbose:
+                    print("  → 指令被接受並執行，但回應寫死送回 8889")
+                    print("     代表：無來源綁定、無重放保護。攻擊者可自任意埠注入指令，")
+                    print("           只需另在 8889 監聽即可收回應；不需回應的指令連監聽都不必。")
+            else:
+                out["verdict"] = "accepted_reply_to_source"
+                if verbose:
+                    print("  → 指令被接受，回應送回來源埠")
     except socket.timeout:
-        if verbose:
-            print(f"  重放（本機埠 {out['alt_port']}）逾時 —— 可能有來源綁定，值得深究")
+        out["verdict"] = "no_response"
+    a.close()
     b.close()
     return out
 
@@ -341,9 +364,11 @@ def main():
     print("=" * 68)
 
     if replay:
-        same = replay.get("replayed_from_alt_port") is not None
-        print(f"[TC-L1-06] 自不同來源埠重放同一位元組序列："
-              f"{'被接受 → 無重放保護、無來源綁定' if same else '被拒絕 → 值得深究'}")
+        v = replay.get("verdict")
+        msg = {"accepted_reply_to_8889": "被接受並執行，回應寫死送回 8889 → 無來源綁定、無重放保護",
+               "accepted_reply_to_source": "被接受，回應送回來源埠 → 無重放保護",
+               "no_response": "無任何回應 → 可能有來源綁定，需以 pcap 覆核"}.get(v, v)
+        print(f"[TC-L1-06] 自不同來源埠重放同一位元組序列：{msg}")
     if video:
         print(f"[TC-L1-05] 視訊 11111：{video['packets']} 封包 / "
               f"{video['bytes']:,} bytes / NAL 起始碼 {video['nal_start_codes']} 個"
