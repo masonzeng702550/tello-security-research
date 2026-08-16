@@ -376,6 +376,28 @@ Error   USB    Unknown USB Device (Set Address Failed)  USB\VID_0000&PID_0004\5&
 - [ ] （可選）以確認可傳資料的線材做對照測試，完全排除線材因素
 - [ ] 電池充飽後執行 TC-L1-01 / 02 / 04
 
+### 附記：抓包工具鏈（同日補齊）
+
+原本無抓包能力。補裝：
+
+```
+Wireshark 4.6.8    winget WiresharkFoundation.Wireshark
+Npcap     1.88     https://npcap.com/dist/npcap-1.88.exe
+                   SHA-256 a2f4ec1e5ea353ff67efd24b2ebf081ba44532410fae8d5e146af0310aa4f56b
+                   Authenticode: Valid / Nmap Software LLC / DigiCert G4 CS RSA4096
+```
+
+兩點記錄：
+
+1. **Wireshark 的 MSI 版不含 Npcap**，需另外安裝，否則 dumpcap -D 報
+   Unable to load Npcap (wpcap.dll)。
+2. **Npcap 免費版不支援 /S 靜默安裝**（該旗標僅開放 OEM 授權版），
+   以 /S 執行會直接回 exit code 2 且不安裝。必須互動式安裝。
+
+安裝後 dumpcap -D 列出 13 個介面，Wi-Fi 為 #5
+（\Device\NPF_{6B0BA880-9D13-4882-B879-2E56902E6F10}）。
+連上 Tello AP 後即以此介面抓 8889／8890／11111。
+
 ---
 
 ## <日期> — <標題>
