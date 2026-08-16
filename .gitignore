@@ -1,0 +1,41 @@
+# --- 二進位樣本：不進版控（體積 + 散布疑慮），只留 MANIFEST.md 記錄雜湊 ---
+samples/*
+!samples/MANIFEST.md
+
+# --- 反編譯產出：可由樣本重建，不進版控 ---
+# 但盤點結果的 JSON 要留 —— 它是可重現資料集的一部分
+static/*
+!static/.gitkeep
+!static/quicklook.json
+
+# --- 原始封包：體積大且可能含個人識別資訊 ---
+dynamic/pcap/*
+!dynamic/pcap/.gitkeep
+dynamic/mitm/*
+!dynamic/mitm/README.md
+!dynamic/mitm/.gitkeep
+
+# Frida 腳本要進版控（是研究成果的一部分），但攔截到的資料不要
+dynamic/frida/*.log
+dynamic/frida/dump/
+
+# --- 絕不進版控 ---
+*.keystore
+*.jks
+credentials*
+*secret*
+*token*
+.env
+
+# --- 內部工作文件，不公開 ---
+docs/10-tooling-spec.md
+docs/11-test-plan.md
+
+# --- 一般 ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+*.tmp
