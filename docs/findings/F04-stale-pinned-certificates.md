@@ -73,19 +73,66 @@ F02 已發現 `client.vgabc.com` 的憑證自 2020-10-16 到期後未再簽發�
 加上本findings，**憑證素材過期是全 App 範圍的模式，不是單點疏漏**。
 這指向建置流程缺乏憑證有效期檢查。
 
-### 3. `aasky.net` — 端點盤點的漏網之魚
+### 3. `aasky.net` — 已查明：**DJI 的後端服務網域**
 
 - 有**三個**憑證檔案專為此網域準備（兩張 leaf + 一張命名誤導的根）
 - 出現在**全部六個版本**
 - **但 dex 硬編碼網域清單中完全沒有它**
-- `www.aasky.net` 目前解析至 CloudFront（`d2scvg9scalkna.cloudfront.net`），**服務存活**
-- `aasky.net` 本身無 A 記錄
 
-**這證實了 F02 的觀測邊界警告是對的**：靜態 dex 字串抽取**無法**產出完整端點清單。
-URL 可能於執行期組出，或位於加密的 `ijiami.ajm`（見 F03）。
+#### 憑證透明度（crt.sh，64 張憑證，9 個子網域）
 
-會為一個網域準備三張 pinning 憑證，代表它**曾經是（或仍是）重要的通訊對象**。
-用途待查。
+```
+aasky.net / www.aasky.net / *.aasky.net
+flighthub-pe.aasky.net          www.flighthub-pe.aasky.net
+ag-rtk.aasky.net                www.ag-rtk.aasky.net
+ag-rtk-alg.aasky.net            www.ag-rtk-alg.aasky.net
+```
+
+**子網域名稱直接說明歸屬**：
+
+| 子網域 | 對應的 DJI 產品 |
+|---|---|
+| `flighthub-pe` | **DJI FlightHub** — DJI 的機隊管理與飛行資料平台 |
+| `ag-rtk` / `ag-rtk-alg` | **AG = Agras（DJI 農業無人機）＋ RTK 定位服務**；`alg` 疑為 algorithm |
+
+另有公開來源將 `acbe.aasky.net` 與 `adhoc-staging.aasky.net`
+列入 DJI GO 4 的韌體更新網域清單。
+
+→ **`aasky.net` 是 DJI 的後端服務網域，不是 Ryze 的。**
+
+#### 網域活躍度與目前解析（2026-08-16）
+
+憑證簽發自 **2015-06-23 至 2026-08-05**，2026 年已簽發 9 張 → **持續營運中**。
+
+| 主機 | 解析 | 歸屬 |
+|---|---|---|
+| `www.aasky.net` | `d2scvg9scalkna.cloudfront.net` → 65.9.180.x | Amazon CloudFront |
+| `ag-rtk.aasky.net` | 114.55.144.58 | **ALISOFT（阿里雲），CN** |
+| `ag-rtk-alg.aasky.net` | 114.55.144.58 | **ALISOFT（阿里雲），CN** |
+| `flighthub-pe.aasky.net` | 無解析 | 已退役 |
+| `acbe` / `adhoc-staging` | 無解析 | 已退役 |
+| `aasky.net`（裸網域） | 無 A 記錄 | — |
+
+> 網域註冊資訊未取得——RDAP 查詢連續失敗（研判為查詢頻率限制）。待補。
+
+#### 判讀
+
+**Tello App 內建了 DJI 後端基礎設施網域的 pinning 憑證。**
+這與 `mydjiflight.dji.com`（六版皆存在）相互印證：
+Tello App 預期會與 DJI 的後端通訊，而非只與 Ryze 自家服務通訊。
+
+但 `aasky.net` **完全不出現在 dex 硬編碼字串中**。三種可能：
+- (a) URL 於執行期組出（例如由設定檔或伺服器回應決定）
+- (b) 相關程式碼位於加密的 `ijiami.ajm`（見 F03）
+- (c) 該路徑已廢棄，憑證是未清除的殘留
+
+考量兩張 `*.aasky.net` leaf 憑證分別於 2018 與 2020 過期、
+且 `flighthub-pe` 等子網域已無解析，**(c) 的可能性最高**。
+但 (b) 無法以靜態方法排除。
+
+**這證實了 F02 的觀測邊界警告**：靜態 dex 字串抽取**無法**產出完整端點清單。
+本專案的端點盤點必須至少涵蓋三個來源——
+dex 字串、pinning 憑證素材、以及（最終）動態流量。
 
 ## 觀測邊界
 
@@ -96,7 +143,8 @@ URL 可能於執行期組出，或位於加密的 `ijiami.ajm`（見 F03）。
 
 ## 下一步
 
-- [ ] **追查 `aasky.net`** — RDAP、crt.sh、被動 DNS；確認與 Ryze/DJI 的關係
+- [x] ~~追查 `aasky.net`~~ → 已查明為 DJI 後端服務網域（見上）
+- [ ] 補 `aasky.net` 的網域註冊資訊（RDAP 被限流，改日重試或改用 whois）
 - [ ] 反編譯 pinning 實作：搜尋 `TrustManager` / `SSLContext` /
       `CertificatePinner` / `checkServerTrusted` 的自訂實作
 - [ ] **動態測試（決定性）**：掛 mitmproxy 自簽憑證
