@@ -136,6 +136,72 @@ Serial     : 1A9B4633
 
 ---
 
+## 2026-08-16 — `client.vgabc.com` 追查（含一則判斷更正）
+
+**目的**：查明前一筆日誌中列為「最高優先未知數」的端點是誰的。
+
+**結果：是 GameSir 手把 SDK 的後端。原本的可疑判斷過度了。**
+
+### 追查過程
+
+**1. RDAP** — `vgabc.com` 註冊於 2010-03-26（早於 Tello 上市 8 年）、
+2024-11-01 仍有異動、NS 為騰訊 DNSPod。
+→ 當時據此推論「第三方、仍在維護、全中國基礎設施」。方向對，但沒查到底。
+
+**2. crt.sh 憑證透明度** — 319 張憑證、14 個子網域：
+```
+client / img / clientgsw / helpgsw / imggsw / img.gsw / ucenter.egg
+xjdl.vgabc.com  xjdl2.vgabc.com  xj001dl.vgabc.com   ← 關鍵
+```
+
+**3. DEX 字串比對（決定性）** — 在 1.6.8.0 的 dex 搜 `gamesir`：
+```
+Lcom/xj/gamesir/sdk/ButtonEvent;
+Lcom/xj/gamesir/sdk/bluetooth/*;
+"driveName":"xiaoji Gamesir-G2"
+```
+**`xj` = 小雞（xiaoji）**，GameSir 手把的品牌方，與子網域 `xjdl`（xiaoji download）吻合。
+
+**4. 網域主體** — `vgabc.com` 由廣州電遊網絡科技有限公司營運。
+
+硬編碼字串為 `https://client.vgabc.com/clientapi/`。
+Tello 支援實體手把操控 → 功能性整合，非資料蒐集端點。
+也解釋了它為何在 1.6.8.0 的 SDK 清理中被保留：手把功能還在。
+
+### 反省
+
+前一筆日誌把它寫成「一個來歷不明、全中國基礎設施的第三方端點在隱私政策清理中
+倖存，需要解釋」——措辭已經預設了結論。實際上只要多一步（查 dex 裡的 SDK 套件路徑）
+就能得到平淡的答案。
+
+**教訓**：T0 靜態證據加上 DNS 歸屬，很容易拼出一個看似合理但錯誤的敘事。
+「可疑」的感覺不是證據。日後遇到不明端點，先找程式碼裡的呼叫方，再做歸屬推論。
+
+### 但確實挖出一個真問題
+
+`client.vgabc.com` 的憑證共 11 張，**最新一張 2019-10-17 簽發、2020-10-16 到期，
+此後未再簽發**。對照 `vgabc.com` 整體 2025 年 78 張、2026 年 53 張——主網域極活躍，
+唯獨這個子網域自 2020 年停滯。
+
+而 App 硬編碼的是 `https://`。
+
+→ 若此路徑仍會被呼叫，TLS 交握應該失敗。除非 **App 忽略憑證錯誤**。
+   後者若成立就是可被中間人利用的路徑，比原本以為的「可疑端點」更值得查。
+   已寫入 F02，待動態驗證。
+
+### 附帶修正
+
+`com.xj.gamesir` 是 `apk_quicklook.ps1` 的 marker 清單先前遺漏的第三方 SDK。
+已補入並重跑：全六版穩定存在（159 次命中），確認為長期功能整合。
+
+**下一步**
+- [ ] Frida hook 確認 `client.vgabc.com` 執行期是否真的被呼叫
+- [ ] 若有呼叫，掛自簽憑證測試 App 是否照樣接受
+- [ ] 其餘端點（`mydjiflight.dji.com`、`report.ryzerobotics.com`）比照辦理，
+      先找呼叫方再談歸屬
+
+---
+
 ## <日期> — <標題>
 
 **目的**：
