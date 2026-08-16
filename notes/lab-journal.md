@@ -202,6 +202,129 @@ Tello 支援實體手把操控 → 功能性整合，非資料蒐集端點。
 
 ---
 
+## 2026-08-16 — 工具鏈建置、權限比對，與加殼的發現
+
+**前置關卡更新**：**P1 解除** — 實體 Tello 已找到，充電中。L1 測試待電池就緒。
+
+### 1. 工具鏈
+
+系統原有 Java 8（32-bit Client VM），對 apktool 3.x（需 Java 11+）與
+cmdline-tools（需 17+）都不足。winget 的 MSI 不支援 `--scope user`，
+改用免安裝 zip 全部裝在 `%USERPROFILE%\devtools\`：
+
+```
+jdk-21.0.12+8            Microsoft OpenJDK 21 LTS (x64)
+android-sdk/build-tools/37.0.0
+android-sdk/platform-tools   adb 1.0.41
+apktool/apktool.jar      3.0.3
+bin/apktool.bat          wrapper，寫死 JDK 21 路徑（不吃系統 Java 8）
+```
+
+使用者層級環境變數已設 `JAVA_HOME` / `ANDROID_HOME` / PATH。
+
+### 2. 補完 v2/v3 簽章驗證（MANIFEST 的 TODO）
+
+`apksigner verify --print-certs` 對六版全跑：
+**全部 v1 + v2 通過、單一簽署者、無 v3**。樣本完整性完全確認。
+
+附帶觀察：連 2024 年的 1.6.8.0 都沒有 v3 簽章（v3 自 Android 9 起可用，支援金鑰輪替）。
+與 targetSdk 30 一致，反映建置設定長期未更新。
+
+### 3. TC-L2-01 權限縱向比對
+
+| 版本 | targetSdk | 權限數 |
+|---|---|---|
+| 1.3.0.0 | 26 | 21 |
+| 1.4.0.0 | 28 | 21 |
+| 1.6.0.0 | 29 | 21 |
+| 1.6.0.1 | 29 | **16** |
+| 1.6.4.0 | 30 | 16 |
+| 1.6.8.0 | 30 | 16 |
+
+**1.6.0.0 → 1.6.0.1 這個小版號更新砍掉 5 個權限**：
+`READ_LOGS`、`SET_DEBUG_APP`、`WRITE_SETTINGS`、
+`MOUNT_UNMOUNT_FILESYSTEMS`、`GET_TASKS`。
+
+對一支飛無人機的 App 而言，這五個都相當越界，`READ_LOGS` 與 `SET_DEBUG_APP` 尤然。
+待查是否為通過 Play 審查而做。
+
+**關鍵**：`ACCESS_FINE_LOCATION` 與 `ACCESS_COARSE_LOCATION` **全六版都在**，
+包含 1.6.8.0。Tello 無 GNSS。若定位功能真的整個移除，此權限沒有理由保留。
+
+其他全版本存在、待查用途：`SYSTEM_ALERT_WINDOW`、`USE_CREDENTIALS`、
+`com.android.launcher.permission.READ_SETTINGS`。
+
+### 4. 追 `liblocSDK8a` — 結果推翻了先前的判斷
+
+**smali 全文檢索**（apktool 解出 1.6.8.0）：
+`locSDK|RoadLine|patchtool|baidu|BDLocation|LocationClient`
+→ **可見 smali 中零命中**，僅 AndroidManifest 與簽章檔的檔案列表有。
+`loadLibrary` 全列舉也未見 locSDK8a / RoadLineRebuildAPI / patchtool。
+
+→ 假設 (b)「以 JNI 或反射從可見程式碼呼叫」**排除**。
+
+**但 AndroidManifest 有兩處命中，內容出乎意料**：
+```xml
+<service android:name="com.baidu.location.f" android:process=":remote"/>
+<meta-data android:name="com.baidu.lbsapi.API_KEY" android:value="NQuYO2K…"/>
+```
+宣告了一個在 smali 中不存在的百度服務類別，且百度 API key 仍在。
+
+**同一行還有更重要的東西**：
+```xml
+android:name="s.h.e.l.l.S"  android:appComponentFactory="s.h.e.l.l.A"
+```
+
+→ 查 assets：`ijiami.ajm`（668 KB）+ `ijm_lib/*/libexec.so`
+→ **愛加密（Ijiami）商用加固，存在於全部六個版本。**
+
+**這推翻了我在 F01 寫的「dex 未加殼」。** 該結論的基礎是
+「com.ryzerobotics 有 947 命中所以沒加殼」——愛加密屬選擇性保護，
+部分類別可見、部分在加密 payload 裡，兩者並存。
+
+**影響**：所有基於 dex 字串掃描的**否定**結論，效力都降級為
+「在可見的 dex 中未出現」。動態驗證從加分項變成必要條件。已寫入 F03。
+
+### 5. 憑證素材全面過期（F04）
+
+檢視 `assets/*.cer|crt|pem` 的實際內容：
+
+| 憑證 | 到期 | 逾期 |
+|---|---|---|
+| `*.aasky.net` (AlphaSSL) | 2018-06-07 | 8 年 |
+| `*.dji.com` (AlphaSSL) | 2018-09-04 | 8 年 |
+| `*.aasky.net` (GoDaddy) | 2020-05-24 | 6 年 |
+| `*.dji.com` (GoDaddy) | 2020-08-03 | 6 年 |
+| `*.ryzerobotics.com` | 2020-12-17 | 5 年 |
+
+1.6.8.0 新增一批根 CA（Amazon×4、DigiCert、GlobalSign、Entrust、USERTrust）——
+研判 pinning 由 leaf 改為根 CA，但舊 leaf 未清除。
+
+**並發現 `aasky.net` 這個網域**：有三個憑證檔案專為它準備、全六版存在，
+**但完全不在 dex 硬編碼網域清單裡**。`www.aasky.net` 目前解析至 CloudFront，服務存活。
+
+→ 實證了 F02 的觀測邊界警告：靜態字串抽取**無法**產出完整端點清單。
+   加上 F03 的加殼，更說明這件事。
+
+### 判讀
+
+今天最重要的不是任何單一發現，而是**方法論上的修正**：
+我先前依賴 dex 字串掃描下了幾個「已移除」的結論，
+在加殼存在的前提下這些都站不住。改成「可見 dex 中未出現」是誠實的表述。
+
+同時，`aasky.net` 的出現方式（只在 pinning 憑證裡、不在字串裡）
+提醒端點盤點要多管道交叉，不能只靠一種抽取方式。
+
+**下一步**
+- [ ] 追查 `aasky.net`（RDAP / crt.sh / 被動 DNS）
+- [ ] 反編譯 pinning 實作（TrustManager / CertificatePinner / checkServerTrusted）
+- [ ] 準備 root 實機與 Frida，跑決定性的動態測試：
+      `System.loadLibrary` / `ClassLoader.loadClass` hook
+- [ ] 評估愛加密的反除錯強度（App 是否在 Frida 環境下拒絕啟動）
+- [ ] 電池充飽後排 L1（TC-L1-01/02/04）
+
+---
+
 ## <日期> — <標題>
 
 **目的**：
