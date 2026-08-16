@@ -7,6 +7,8 @@ samples/*
 static/*
 !static/.gitkeep
 !static/quicklook.json
+!static/privacy-policy/
+!static/privacy-policy/**
 
 # --- 原始封包：體積大且可能含個人識別資訊 ---
 dynamic/pcap/*
