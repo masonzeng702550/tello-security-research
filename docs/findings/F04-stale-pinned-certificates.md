@@ -134,12 +134,63 @@ Tello App 預期會與 DJI 的後端通訊，而非只與 Ryze 自家服務通�
 本專案的端點盤點必須至少涵蓋三個來源——
 dex 字串、pinning 憑證素材、以及（最終）動態流量。
 
+## pinning 實作已定位，但行為無法靜態取得
+
+反編譯 1.6.8.0 後找到 App 自有的 TLS 處理類別：
+
+| 混淆後類別 | 原始檔名 |
+|---|---|
+| `com/ryzerobotics/tello/common/c/d` | **`RYZEHttpsUtils.java`** |
+| `com/ryzerobotics/tello/common/c/e` | **`RYZEStatisticsHttpsUtils.java`** |
+
+`RYZEHttpsUtils` 的結構（欄位與方法簽章不受方法抽取影響）：
+
+```smali
+.field private static b:Lokhttp3/OkHttpClient;
+.method public static a()Lcom/ryzerobotics/tello/common/c/d;      單例
+.method private a([C)Ljava/security/KeyStore;                     由密碼建 KeyStore
+.method private varargs a([Ljava/io/InputStream;)Ljavax/net/ssl/X509TrustManager;
+                                                                   由憑證串流建 TrustManager
+.method public b()Lokhttp3/OkHttpClient;                          建構 HTTP client
+```
+
+**方法簽章明確顯示 App 自行建構 X509TrustManager，且輸入為憑證檔的 InputStream**
+——與 `assets/` 中那批 `.cer`/`.crt`/`.pem` 相符。
+
+### 但方法主體是空的
+
+```smali
+.method public b()Lokhttp3/OkHttpClient;
+    .locals 1
+    const/4 v0, 0x0
+    return-object v0        ← 只有 return null
+    nop
+.end method
+```
+
+`a([Ljava/io/InputStream;)` 佔 300 行，內容為 `return null` + 約 290 個 `nop`。
+
+**App 的 89% 方法主體已被愛加密抽取（見 F03）。**
+因此**無法靜態判斷**：
+- 憑證從何處載入、載入哪幾張
+- `checkServerTrusted` 的實作邏輯
+- 驗證失敗時是否 fallback 到系統信任鏈
+- 過期的 leaf 憑證是否真的被使用
+
+### 附帶確認
+
+- 憑證檔名（`aasky-net.cer` 等）**存在於 dex 字串池**，
+  代表**確實有某個方法引用它們**（依 F03 的推論）——只是那個方法主體看不到。
+  → **這些憑證不是純粹的死檔案，有程式碼引用。**
+- 第三方的 `com/zhy/http/okhttp/https/HttpsUtils` **無任何呼叫**，為未使用的函式庫程式碼。
+- 平台層 `networkSecurityConfig` **未設定**（見 F07）→ pinning 若存在，純由程式碼實作。
+
 ## 觀測邊界
 
-- 僅確認**憑證檔案存在且已過期**。**未確認** App 實際如何使用它們——
-  可能載入、可能忽略、可能只用根 CA。
-- 未反編譯 pinning 實作邏輯（相關程式碼可能位於 `ijiami.ajm`）。
+- 僅確認**憑證檔案存在、已過期、且被某個方法引用**。
+  **未確認**實際的驗證行為——受 F03 的方法抽取所阻。
 - 「逾期年數」以 2026-08 為基準計算。
+- 未分析 `RYZEStatisticsHttpsUtils`（用於統計上報的獨立 client）與主 client 的差異。
 
 ## 下一步
 
