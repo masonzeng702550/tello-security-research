@@ -659,6 +659,89 @@ APKMirror   31,618,407 bytes   b55f2e62cd4dff960e855a549c978f611f82683e86134a4bc
 
 ---
 
+## 2026-08-17 — 繞過 pinning 取得 DJI 後端 payload
+
+**目的**：F04 遺留的問題——`mydjiflight.dji.com` 有 pinning，payload 取不到。
+
+**環境**：Pixel 6 Pro / Android 13 / Magisk root / frida-server / mitmdump 8080 + `adb reverse`
+
+**指令 / 操作**：
+
+```
+frida -U -f com.ryzerobotics.tello -l dynamic/frida/unpin-targeted.js
+```
+
+**判讀**：
+
+前兩次嘗試 App 皆在 `LoadedApk.makeApplicationInner` 崩潰。
+原因是 `Java.perform` 與愛加密的 dex 還原撞在一起。
+**改為延遲 2500 ms 掛載後成功**——殼於 1–2 秒完成還原，
+App 於 4–5 秒發出首波請求，2.5 秒是這個窗口。
+
+取得三個端點的完整內容：`getallfile`、`configpath`，
+以及由 `configpath` 回應動態指派的 `terra-2-g-a.djicdn.com`。
+最後這個**不存在於任何靜態來源**，只有動態分析能發現。
+
+韌體設定檔的 `Content-Type` 是 `application/pgp-signature`，
+且 manifest 中 `antirollback="0"`、`enforce="0"`。
+
+→ 寫入 **F10**，並更新 F02。
+
+**下一步**：
+- [ ] 定位 `signature` 欄位的產生邏輯
+- [ ] 連機後重跑
+
+---
+
+## 2026-08-17 — 權限 A/B 對照測試
+
+**目的**：檢驗「待機無外送流量是因為拒絕了位置與相簿權限」這個假設。
+若成立，先前所有無流量的觀察都只是權限設定的產物，會失去外部效度。
+
+**環境**：同上。兩組各待機 180 秒，全程不觸碰畫面。
+
+**指令 / 操作**：
+
+```
+.\tools\run_permission_ab.ps1 -Arm A -IdleSeconds 180
+.\tools\run_permission_ab.ps1 -Arm B -IdleSeconds 180
+python tools\diff_flows.py dynamic\mitm\AB-perm-A.flow dynamic\mitm\AB-perm-B.flow
+```
+
+**原始輸出**：
+
+```
+=== 請求數 ===
+A拒絕: 1    B授予: 1
+
+POST client.vgabc.com/clientapi/    A=1  B=1   =
+[相同] POST client.vgabc.com/clientapi/ #1  (110 bytes)
+回應大小  A=[2053]  B=[2053]
+```
+
+**判讀**：
+
+**假設否證。** 兩組完全相同，連 payload 都逐位元組一致。
+測試後以 `dumpsys` 確認 B 組六項權限確實 `granted=true`，排除 `pm grant` 未生效。
+
+設計上最關鍵的一點是**兩組都必須先把 `gamesir_lastTime` 歸零**。
+若不做，兩組都會因節流而無流量，那個零差異會被誤讀成「權限無影響」——
+結論碰巧正確，但論證是無效的。
+
+意外收穫兩項：
+
+1. **本次兩組都沒觸發 `mydjiflight`**，與昨天的差異在於全程未觸碰畫面
+   → DJI 韌體檢查**需要使用者互動，不是待機心跳**。修正 F10 可能引起的誤讀。
+2. `shared_prefs/share_date.xml` 中發現 **`AreaCodeTello = TW`**
+   → App 已正確判定地區為台灣，卻仍送 `language: zh_cn`。
+     這排除了「偵測失敗」的解釋，F05 的性質從技術疏漏變成分類決定。
+
+**下一步**：
+- [ ] 連機後重跑同一組 A/B——飛行資料的上傳才是真正的風險點
+- [ ] Frida hook `LocationManager` / `MediaStore`，區分「未讀取」與「讀取但未外送」
+- [ ] 追出 `AreaCodeTello` 的寫入點
+---
+
 ## <日期> — <標題>
 
 **目的**：
