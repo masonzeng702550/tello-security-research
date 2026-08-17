@@ -47,5 +47,7 @@ Thumbs.db
 dynamic/firmware/
 
 # --- 截圖：含裝置識別碼與實景，需逐張審視後才可公開 ---
-docs/screenshots/*
+docs/screenshots/**
+!docs/screenshots/**/
+!docs/screenshots/**/*.md
 !docs/screenshots/README.md
