@@ -47,6 +47,7 @@
 | [F10](docs/findings/F10-dji-backend-firmware-channel.md) | DJI 後端與韌體更新通道完整協定 | L3/L1 | **T3** | Info |
 | [F11](docs/findings/F11-permission-ab-idle-traffic.md) | 權限 A/B：拒絕位置與相簿**不改變**待機流量 | 方法論 | T2 | — |
 | [F12](docs/findings/F12-app-control-protocol-no-replay-protection.md) | **App 控制協定明文、搖桿指令序號恆為 0、Wi-Fi 無密碼** | L1 | T2 | **High** |
+| [F13](docs/findings/F13-flight-log-stored-locally-not-uploaded.md) | 飛行紀錄以 DJI_LOG_V3 存於本機；時間差上傳**未觀測到** | L3 | T2 | Info |
 
 ## 開始之前
 
