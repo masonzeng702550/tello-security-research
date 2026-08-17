@@ -5,9 +5,9 @@
 | 編號 | F04 |
 | 層級 | L3 供應鏈與資料主權 |
 | 分類 | 設計缺陷 |
-| 嚴重度 | **待定** — 取決於 pinning 是否實際強制執行 |
+| 嚴重度 | **Medium** — pinning 對自家端點有效，但覆蓋範圍不完整（見 F09） |
 | 受影響版本 | 全部（1.3.0.0 – 1.6.8.0） |
-| 狀態 | 靜態已確認 / 行為待驗證 |
+| 狀態 | 靜態已確認 / **行為已於 2026-08-17 實測**（見 F09） |
 | 新穎性 | 本研究新發現 |
 
 ## 摘要
@@ -54,7 +54,24 @@ godaddy_secure_certificate_authority_g2.pem
 
 ## 判讀
 
-### 1. 過期 leaf 憑證的三種可能
+### ✅ 2026-08-17 實測結果（已排除最嚴重的可能）
+
+實機 MITM 測試（見 **F09**）顯示，同一次啟動中：
+
+```
+mydjiflight.dji.com  → Client TLS handshake failed，拒絕 MITM 憑證  ✅ pinning 生效
+client.vgabc.com     → 接受 MITM 憑證，請求完整解密              ❌ 無 pinning
+```
+
+**憑證驗證並未整體停用**——對自家端點確實有效，
+印證本文件所定位的 `RYZEHttpsUtils` 確有作用。
+下方三種可能中的 **(c) 憑證驗證整體被停用** 因此**排除**。
+
+但實測揭示一個本文件原先未預期的面向：
+**pinning 的覆蓋範圍不完整，第三方 SDK 的連線繞過了該保護**。
+詳見 F09。
+
+### 1. 過期 leaf 憑證的三種可能（原始分析，保留供對照）
 
 若 App 仍以這些 leaf 憑證做嚴格 pinning，對應連線**必然失敗**（憑證早已輪替）。
 App 仍可正常使用，所以至少其一成立：
@@ -187,8 +204,10 @@ dex 字串、pinning 憑證素材、以及（最終）動態流量。
 
 ## 觀測邊界
 
-- 僅確認**憑證檔案存在、已過期、且被某個方法引用**。
-  **未確認**實際的驗證行為——受 F03 的方法抽取所阻。
+- 憑證檔案存在、已過期、且被某個方法引用：**靜態確認**。
+- 實際驗證行為：**已於 2026-08-17 部分實測**（見上與 F09）。
+  仍未確認的是**哪幾張憑證被實際載入**——
+  pinning 對 dji.com 生效，但無法判斷依據的是過期的 leaf 還是新增的根 CA。
 - 「逾期年數」以 2026-08 為基準計算。
 - 未分析 `RYZEStatisticsHttpsUtils`（用於統計上報的獨立 client）與主 client 的差異。
 
@@ -198,7 +217,10 @@ dex 字串、pinning 憑證素材、以及（最終）動態流量。
 - [ ] 補 `aasky.net` 的網域註冊資訊（RDAP 被限流，改日重試或改用 whois）
 - [ ] 反編譯 pinning 實作：搜尋 `TrustManager` / `SSLContext` /
       `CertificatePinner` / `checkServerTrusted` 的自訂實作
-- [ ] **動態測試（決定性）**：掛 mitmproxy 自簽憑證
-  - 連線失敗 → pinning 有效，屬情況 (a)
-  - 連線成功 → 情況 (b) 或 (c)，**升級為可利用的中間人風險**
-- [ ] 逐一測試各端點，pinning 行為可能因端點而異
+- [x] ~~動態測試：掛 mitmproxy 自簽憑證~~ → **已完成 2026-08-17**
+      `mydjiflight.dji.com` 拒絕（pinning 有效）、
+      `client.vgabc.com` 接受（無 pinning）。詳見 F09
+- [x] ~~逐一測試各端點，pinning 行為可能因端點而異~~ → **確認確實因端點而異**
+- [ ] 以 Frida 繞過 pinning，取得 `mydjiflight.dji.com` 的 payload
+- [ ] 測試 `report.ryzerobotics.com`、`chatsupport.*` 等其餘端點的 pinning 行為
+- [ ] 觀測邊界：本次僅觸發兩個端點，`aasky.net` 仍未見於實際流量
