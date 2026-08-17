@@ -28,6 +28,25 @@
 
 詳見 `samples/MANIFEST.md` 與 `docs/00-research-plan.md`。
 
+## 發現索引
+
+證據等級：**T0** 靜態存在 ／ **T0′** 靜態不存在 ／ **T1** 可達程式路徑 ／
+**T2** 執行期觀測 ／ **T3** 已解密 payload（定義見 `docs/02-threat-model.md`）
+
+| # | 標題 | 層級 | 證據 | 嚴重度 |
+|---|---|---|---|---|
+| [F01](docs/findings/F01-third-party-sdk-longitudinal.md) | 第三方 SDK 縱向演變：百度與 Bugly 確於 1.6.8.0 移除 | L3 | T0/T0′ | — |
+| [F02](docs/findings/F02-endpoint-attribution.md) | 端點歸屬：六版皆存在的非本機端點與其營運方 | L3 | T0→T2 | 待定 |
+| [F03](docs/findings/F03-ijiami-packer.md) | 愛加密加殼：89% 方法主體被抽取，靜態分析的邊界 | 方法論 | T0 | — |
+| [F04](docs/findings/F04-stale-pinned-certificates.md) | 內建 pinning 憑證全數過期，並暴露未揭露網域 | L3 | T0→T2 | Medium |
+| [F05](docs/findings/F05-privacy-policy-language-asymmetry.md) | 隱私政策的語言與地區落差；App 已判定 TW 仍套用簡中 | L3 | T2 | — |
+| [F06](docs/findings/F06-control-channel-no-auth.md) | 控制通道無認證，可被同網段裝置接管 | L1 | T2 | **High** |
+| [F07](docs/findings/F07-l2-attack-surface.md) | 同裝置攻擊面：0 個匯出元件 | L2 | T0′ | Low |
+| [F08](docs/findings/F08-dynamic-first-launch.md) | 首次啟動零網路請求 | L3 | T2 | — |
+| [F09](docs/findings/F09-undisclosed-gamesir-transmission.md) | **未揭露的第三方境外上報，且無法以權限阻止** | L3 | **T3** | **High** |
+| [F10](docs/findings/F10-dji-backend-firmware-channel.md) | DJI 後端與韌體更新通道完整協定 | L3/L1 | **T3** | Info |
+| [F11](docs/findings/F11-permission-ab-idle-traffic.md) | 權限 A/B：拒絕位置與相簿**不改變**待機流量 | 方法論 | T2 | — |
+
 ## 開始之前
 
 1. 先跑 `docs/03-ethics-legal.md` 的檢查表。
