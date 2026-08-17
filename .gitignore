@@ -17,9 +17,10 @@ dynamic/mitm/*
 !dynamic/mitm/README.md
 !dynamic/mitm/.gitkeep
 
-# Frida 腳本要進版控（是研究成果的一部分），但攔截到的資料不要
+# Frida 腳本要進版控（是研究成果的一部分），但攔截到的資料與二進位檔不要
 dynamic/frida/*.log
 dynamic/frida/dump/
+dynamic/frida/frida-server-*
 
 # --- 絕不進版控 ---
 *.keystore
@@ -41,3 +42,10 @@ venv/
 .DS_Store
 Thumbs.db
 *.tmp
+
+# --- 韌體映像檔：體積大且受 Google 條款限制，不進版控 ---
+dynamic/firmware/
+
+# --- 截圖：含裝置識別碼與實景，需逐張審視後才可公開 ---
+docs/screenshots/*
+!docs/screenshots/README.md

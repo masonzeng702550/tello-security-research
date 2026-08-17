@@ -27,7 +27,12 @@
 
 .EXAMPLE
     .\run_l1_capture.ps1
+    .\run_l1_capture.ps1 -Replay -VideoSeconds 10
     .\run_l1_capture.ps1 -TelloSsid TELLO-XXXXXX -ListenSeconds 20
+
+.NOTES
+    原網路的 SSID 是執行當下自動偵測的，不需事先設定。
+    換了 Wi-Fi 也不必修改腳本。
 #>
 [CmdletBinding()]
 param(
@@ -83,7 +88,19 @@ function Wait-ForIp($prefix, $timeoutSec) {
 # ---------------------------------------------------------------- 起始狀態
 $originalSsid = Get-CurrentSsid
 Say "原本連線的 SSID: $originalSsid" 'Cyan'
-if (-not $originalSsid) { Say "警告：無法判定目前 SSID，結束後可能無法自動切回" 'Yellow' }
+if (-not $originalSsid) {
+    Say "警告：無法判定目前 SSID，結束後可能無法自動切回" 'Yellow'
+} else {
+    # 確認原網路的設定檔存在 —— 沒有它就切不回去，會把使用者困在沒網路的狀態。
+    # 這是唯一會造成「回不來」的失敗模式，所以在斷線之前就先擋掉。
+    $profiles = (netsh wlan show profiles 2>&1) -join "`n"
+    if ($profiles -notmatch [regex]::Escape($originalSsid)) {
+        Say "中止：找不到 '$originalSsid' 的已儲存設定檔，切走之後將無法自動連回。" 'Red'
+        Say "      請先在 Wi-Fi 設定中勾選『自動連線』建立設定檔，再重新執行。" 'Red'
+        exit 1
+    }
+    Say "原網路設定檔存在，結束後可自動切回" 'DarkGray'
+}
 
 $capProc = $null
 
