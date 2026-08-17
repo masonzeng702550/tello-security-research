@@ -115,6 +115,41 @@ Tello App 支援以實體手把操控，此為功能性整合，非資料蒐集�
 `com.xj.gamesir.sdk` 是先前 SDK 盤點**遺漏**的第三方元件
 （`apk_quicklook.ps1` 的 marker 清單未涵蓋）。已補入，需重跑縱向比對。
 
+## 追加：動態分析發現的端點（2026-08-17）
+
+實機流量擷取後，發現一個**不存在於任何靜態來源**的端點：
+
+```
+terra-2-g-a.djicdn.com
+```
+
+- ❌ 不在 dex 字串池
+- ❌ 不在 pinning 憑證素材
+- ❌ 不在 AndroidManifest
+- ✅ 僅由 `mydjiflight.dji.com/getfile/configpath` 的**回應內容**動態提供
+
+用途為韌體設定檔與韌體本體的下載（`.pro.cfg.sig` / `.pro.fw.sig`），
+承載於**阿里雲 OSS**（`Server: Tengine`、`x-oss-*` 標頭）。
+
+### 這強化了本findings原有的方法論結論
+
+本文件先前已記載：端點盤點需涵蓋 **dex 字串**、**pinning 憑證素材**、
+**動態流量** 三個來源。`terra-2-g-a.djicdn.com` 證明**第三個來源不可省略**——
+由伺服器回應動態指派的端點，任何靜態方法都不可能發現。
+
+### 本次工作階段實際觸發的端點
+
+| 端點 | pinning | 用途 |
+|---|---|---|
+| `client.vgabc.com/clientapi/` | ❌ 無 | GameSir SDK（見 F09） |
+| `mydjiflight.dji.com/getfile/getallfile` | ✅ 有 | 韌體版本清單 |
+| `mydjiflight.dji.com/getfile/configpath` | ✅ 有 | 韌體設定檔路徑 |
+| `terra-2-g-a.djicdn.com/**.sig` | 未測 | 韌體檔下載（阿里雲 OSS） |
+
+**未觸發**：`report.ryzerobotics.com`、`chatsupport.*`、`enchatsupport.*`、`aasky.net`。
+這四者在本次觀測條件下（未登入、未連機）皆未被使用。
+
+詳見 **F10**。
 ## ⚠️ 觀測邊界（重要）
 
 - 這些網域是**從 dex 抽出的硬編碼字串**。已證明「程式碼裡有」，
