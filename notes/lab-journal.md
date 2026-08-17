@@ -742,6 +742,52 @@ POST client.vgabc.com/clientapi/    A=1  B=1   =
 - [ ] 追出 `AreaCodeTello` 的寫入點
 ---
 
+## 2026-08-18 — 實機飛行：控制協定、飛行日誌、時間差測試
+
+**目的**：TC-L1-08 錄下實際操作的控制封包；TC-L3-11 測時間差上傳路徑。
+
+**環境**：Pixel 6 Pro / Magisk root / mitmproxy + Frida / 手機端 `/system/bin/tcpdump`
+
+**指令 / 操作**：
+
+```
+adb shell su -c "tcpdump -i wlan0 -s 0 -w /data/local/tmp/tello.pcap host 192.168.10.1"
+tshark -r flight.pcap -Y "udp.port==8889" -w ctrl_only.pcap
+python tools\decode_tello_proto.py dynamic\pcap\TC-L1-08_ctrl_only.pcap
+.\tools\capture_session.ps1 -Tag TC-L3-11-deferred-upload
+```
+
+**判讀**：見 **F12**、**F13**。核心是搖桿指令 `0x0050` 共 11,693 筆序號全為 0，
+且 Tello Wi-Fi 為 `open`。時間差上傳在未登入、5 分鐘的條件下未觀測到。
+
+### 三個方法論教訓
+
+**一、VPN 沒真的關掉，差點毀掉整輪資料。**
+`SurfsharkWireGuard` 介面仍 Up、出口 IP 在 Phoenix，
+而 Ryze 的 `GetIPRegion` 判定我們在英國，App 因此拿到英文客服端點。
+**教訓：每輪地區相關測試前，必須先驗證出口 IP，不能只信 VPN app 的 UI。**
+回溯發現 F10 的 CloudFront POP 是 `SFO53`（舊金山），
+台灣使用者正常應打到東京或香港——那輪的 VPN 很可能也是開的，已回頭註記。
+
+**二、需要大幅搬動裝置的操作，不該與 USB 擷取同時進行。**
+IMU 校準時扯到線，`adb reverse` 一斷，手機在無人機 Wi-Fi 上等於完全沒網路，
+該段流量既沒抓到、App 也連不出去。
+**順序應反過來：先校準好，再插線開始抓。**
+
+**三、PowerShell 反引號第二次咬人。**
+用雙引號 `.Replace()` 寫入含反引號的 Markdown，
+`` `f `` 變成 form-feed、`` `0 `` 變成 null，寫進 F12 的內文。
+先前已為此立過規則卻沒遵守。
+**規則重申：所有含反引號的字串一律用單引號 here-string `@'...'@`。**
+已加入全專案控制字元掃描作為驗收步驟。
+
+**下一步**：
+- [ ] TC-L1-03 空曠場地實測接管（目前最高優先）
+- [ ] TC-L3-09 登入後重跑 F13——那是 F13 最大的缺口
+- [ ] 台灣 IP 下重做客服頁面測試（阿里雲 ARMS 那批尚未寫成 findings）
+- [ ] 飛機 `ERROR CODE 29` 未解決，完整六面 IMU 校準待做
+---
+
 ## <日期> — <標題>
 
 **目的**：
