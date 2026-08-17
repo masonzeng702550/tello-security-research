@@ -46,6 +46,7 @@
 | [F09](docs/findings/F09-undisclosed-gamesir-transmission.md) | **未揭露的第三方境外上報，且無法以權限阻止** | L3 | **T3** | **High** |
 | [F10](docs/findings/F10-dji-backend-firmware-channel.md) | DJI 後端與韌體更新通道完整協定 | L3/L1 | **T3** | Info |
 | [F11](docs/findings/F11-permission-ab-idle-traffic.md) | 權限 A/B：拒絕位置與相簿**不改變**待機流量 | 方法論 | T2 | — |
+| [F12](docs/findings/F12-app-control-protocol-no-replay-protection.md) | **App 控制協定明文、搖桿指令序號恆為 0、Wi-Fi 無密碼** | L1 | T2 | **High** |
 
 ## 開始之前
 
