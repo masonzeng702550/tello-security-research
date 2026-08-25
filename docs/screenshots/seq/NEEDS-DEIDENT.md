@@ -34,3 +34,12 @@
 - **Tello 的 SSID `TELLO-xxxxxx`** —— 可識別特定機體，
   出現在 pcap 與 Wi-Fi 設定截圖中。findings 文件內已一律遮蔽為 `TELLO-XXXXXX`
 - pcap 檔（`dynamic/pcap/`）本身不進版控，但若作為附件提供須先過濾
+## 合成圖（2026-08-25）
+
+| 檔案 | 可否直接發布 |
+|---|---|
+| `FIG-01-video-killed-comparison.png` | ❌ **上半部含住家影像**，發布前須模糊或裁切 |
+| `FIG-02-statusbar-only-safe-to-publish.png` | ✅ 僅擷取狀態列，不含影像區 |
+
+`FIG-01` 下半部另有 Magisk 的「已授予 殼層 使用超級使用者的權限」提示，
+那是研究環境的產物、非漏洞的一部分，發布時宜裁掉以免誤導。
