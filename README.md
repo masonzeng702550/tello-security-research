@@ -52,6 +52,7 @@
 | [F14](docs/findings/F14-support-webview-third-party-telemetry.md) | 客服 WebView 載入阿里雲 ARMS 與 GA，含持久性 uid | L3 | **T3** | Medium |
 | [F15](docs/findings/F15-unauthenticated-video-and-log-exfiltration.md) | **未經認證即可取得即時影像與飛行日誌（已實測）** | L1 | T2 | **High** |
 | [F16](docs/findings/F16-sdk-command-hijack-and-video-dos.md) | **7 個明文位元組即切斷擁有者影像並取得完整遙測** | L1 | T2 | **Critical** |
+| [F17](docs/findings/F17-native-library-analysis.md) | 原生程式庫：無隱藏端點；百度模組為孤兒程式碼 | L3 | T0/T2 | Info |
 
 ## 開始之前
 
