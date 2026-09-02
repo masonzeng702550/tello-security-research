@@ -21,6 +21,7 @@
 | `dynamic/frida/` | Frida hook 腳本 |
 | `tools/` | 分析輔助腳本 |
 | `poc/` | 可重現的驗證腳本與重現指引 |
+| `blog-assets/` | **可直接發布**的圖片、報告與可引用數據 |
 | `docs/procedures/` | 現場測試操作程序 |
 | `notes/lab-journal.md` | 實驗日誌（照時間順序，逐筆記錄） |
 
