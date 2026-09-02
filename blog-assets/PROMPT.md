@@ -28,7 +28,11 @@
 4. blog-assets/README.md
    圖片清單與各張的建議用途，以及不可發布的素材。
 
-5. README.md
+5. docs/08-research-journey.md
+   ★ 研究歷程。動機、環境建置的完整過程、踩過的坑、走錯的路。
+     文章的敘事骨架與細節多數來自這份，不要只寫成果。
+
+6. README.md
    18 份 findings 的索引，含層級與嚴重度。需要細節時再去讀個別的
    docs/findings/Fxx-*.md。
 

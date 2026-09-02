@@ -13,6 +13,7 @@
 | `docs/03-ethics-legal.md` | 倫理與法規邊界 |
 | `docs/06-disclosure-draft.md` | 負責任揭露的通報草稿（**未寄出**） |
 | `docs/07-blog-outline.md` | 部落格撰寫方向與發表前檢查表 |
+| `docs/08-research-journey.md` | **研究歷程**：動機、環境建置、踩過的坑與走錯的路 |
 | `docs/findings/` | 每個發現一份 `Fxx-*.md`（用 `TEMPLATE-finding.md`） |
 | `samples/` | APK 樣本（**不進版控**），`MANIFEST.md` 記錄來源與雜湊 |
 | `static/` | jadx / apktool / Ghidra 產出（**不進版控**） |
