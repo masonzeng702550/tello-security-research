@@ -11,6 +11,31 @@
 | 對應測試 | TC-L1-09（新增），承接 F12 的「雙通道競態」待辦 |
 | 證據 | `pcap:TC-L1-09-sdk-concurrent.pcap`、`screenshot:20260825-03` |
 
+## ⚠️ 新穎性：核心機制已有前人發表
+
+**本findings所述的攻擊並非首次發現。** 於 2026-08-26 的查證中確認：
+
+| 前人已發表 | 來源 |
+|---|---|
+| Tello Wi-Fi 預設無密碼 | Alias Robotics **RVDP#1208**（RVSS 10.0／CVSS 9.4） |
+| SDK 協定無認證、可劫持 | 同儕審查論文《Analysis of Control Channel Cybersecurity of the Consumer-Grade UAV by the Example of DJI Tello》 |
+| **以 SDK 指令踢掉已連線的手機** | 公開技術文章，明載可「disconnect connected phones and mark themselves as the controller」 |
+
+→ **不得宣稱「本研究發現 Tello 可被未認證接管」。**
+
+### 本findings的實際增量
+
+前人多以「Tello 沒有認證」概括。本findings以實測指出該敘述**不完整**：
+
+| 增量 | 內容 | 前人是否涵蓋 |
+|---|---|---|
+| **兩條路徑的安全模型相反** | App 二進位協定**具**工作階段綁定（F12 實測）；SDK 協定**完全沒有** | ❌ 未作此區分 |
+| **WPA2 密碼無法緩解** | 設定密碼後攻擊照舊成立（實測） | ❌ 未測 |
+| **不可恢復性** | 47 秒零恢復、App 內重連無效、僅能關閉電源 | ❌ 未見紀錄 |
+| 精確時序與量化 | 18 ms 回 `ok`；影像於 4 ms 內中斷；1,766 → 0 | ❌ |
+
+詳見 `docs/01-prior-art.md` 的新穎性評估。
+
 ## 摘要
 
 Tello 除了官方 App 使用的私有二進位協定外，另支援**純文字的 SDK 協定**。
