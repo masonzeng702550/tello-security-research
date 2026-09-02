@@ -11,6 +11,7 @@
 | `docs/01-prior-art.md` | 前人研究盤點與缺口定位 |
 | `docs/02-threat-model.md` | 三層威脅模型與舉證標準 |
 | `docs/03-ethics-legal.md` | 倫理與法規邊界 |
+| `docs/06-disclosure-draft.md` | 負責任揭露的通報草稿（**未寄出**） |
 | `docs/findings/` | 每個發現一份 `Fxx-*.md`（用 `TEMPLATE-finding.md`） |
 | `samples/` | APK 樣本（**不進版控**），`MANIFEST.md` 記錄來源與雜湊 |
 | `static/` | jadx / apktool / Ghidra 產出（**不進版控**） |
@@ -18,6 +19,7 @@
 | `dynamic/mitm/` | mitmproxy flow dump、解密後的 HTTP 交易 |
 | `dynamic/frida/` | Frida hook 腳本 |
 | `tools/` | 分析輔助腳本 |
+| `poc/` | 可重現的驗證腳本與重現指引 |
 | `docs/procedures/` | 現場測試操作程序 |
 | `notes/lab-journal.md` | 實驗日誌（照時間順序，逐筆記錄） |
 
