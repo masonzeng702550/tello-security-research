@@ -37,27 +37,71 @@ Java.perform(function () {
     var hooked = [];
 
     // ---------------------------------------------------- F10：signature 如何產生
+    //
+    // 關鍵：MessageDigest 的輸入可能經由多個 update 多載分次餵入。
+    // 只攔 digest() 只能拿到結果，拿不到明文。
+    // 故累積每個 instance 的全部輸入，於 digest() 時一併印出。
     try {
         var MD = Java.use('java.security.MessageDigest');
-        MD.digest.overload().implementation = function () {
-            var out = this.digest();
-            console.log('[MD ] ' + this.getAlgorithm() + ' digest() -> ' + hex(out));
-            return out;
-        };
-        MD.update.overload('[B').implementation = function (b) {
-            var a = ascii(b);
-            console.log('[MD ] update(' + b.length + 'B) ' + (a ? '"' + a + '"' : hex(b)));
-            return this.update(b);
-        };
-        MD.digest.overload('[B').implementation = function (b) {
-            var a = ascii(b);
-            console.log('[MD ] ' + this.getAlgorithm() + ' digest(' + b.length + 'B) ' +
-                        (a ? '"' + a + '"' : hex(b)));
-            var out = this.digest(b);
-            console.log('[MD ]   -> ' + hex(out));
-            return out;
-        };
-        hooked.push('MessageDigest');
+        var acc = {};                    // instance hash -> 已累積的位元組
+
+        function key(o) { try { return o.hashCode(); } catch (e) { return 0; } }
+        function push(o, bytes, from, len) {
+            var k = key(o);
+            if (!acc[k]) acc[k] = [];
+            var st = from || 0, n = (len === undefined || len === null) ? bytes.length : len;
+            for (var i = 0; i < n && i < 4096; i++) acc[k].push(bytes[st + i] & 0xff);
+        }
+        function dump(o, algo, out) {
+            var k = key(o), b = acc[k] || [];
+            var s = '', printable = 0;
+            for (var i = 0; i < b.length; i++) {
+                var c = b[i];
+                if (c >= 32 && c < 127) { s += String.fromCharCode(c); printable++; }
+                else s += '\\x' + ('0' + c.toString(16)).slice(-2);
+            }
+            var hx = '';
+            for (var j = 0; j < Math.min(b.length, 64); j++)
+                hx += ('0' + b[j].toString(16)).slice(-2);
+            console.log('[MD ] ' + algo + '  輸入 ' + b.length + ' bytes');
+            if (b.length) {
+                if (printable > b.length * 0.6) console.log('[MD ]   明文: "' + s + '"');
+                else console.log('[MD ]   hex : ' + hx + (b.length > 64 ? '…' : ''));
+            }
+            console.log('[MD ]   結果: ' + out);
+            delete acc[k];
+        }
+        function outHex(arr) {
+            var h = '';
+            for (var i = 0; i < arr.length; i++) h += ('0' + (arr[i] & 0xff).toString(16)).slice(-2);
+            return h;
+        }
+
+        MD.update.overloads.forEach(function (ov) {
+            ov.implementation = function () {
+                var a = arguments;
+                try {
+                    if (a.length >= 1 && a[0] && a[0].length !== undefined) {
+                        if (a.length === 3) push(this, a[0], a[1], a[2]);
+                        else push(this, a[0]);
+                    }
+                } catch (e) {}
+                return ov.apply(this, a);
+            };
+        });
+        MD.digest.overloads.forEach(function (ov) {
+            ov.implementation = function () {
+                var a = arguments;
+                try {
+                    if (a.length >= 1 && a[0] && a[0].length !== undefined && a.length === 1)
+                        push(this, a[0]);
+                } catch (e) {}
+                var r = ov.apply(this, a);
+                try { dump(this, this.getAlgorithm(), outHex(r)); } catch (e) {}
+                return r;
+            };
+        });
+        hooked.push('MessageDigest(全多載)');
     } catch (e) { console.log('[SKIP] MessageDigest: ' + e.message); }
 
     // ---------------------------------------------------- F05：AreaCodeTello 寫入來源
