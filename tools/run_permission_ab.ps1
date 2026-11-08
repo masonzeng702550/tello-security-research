@@ -35,7 +35,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('A','B')][string]$Arm,
     [int]$IdleSeconds = 180,
-    [string]$Adb  = '%USERPROFILE%\devtools\android-sdk\platform-tools\adb.exe',
+    [string]$Adb  = 'adb',
     [string]$Pkg  = 'com.ryzerobotics.tello'
 )
 

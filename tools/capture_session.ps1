@@ -30,7 +30,7 @@ param(
     [switch]$Stop,
     [switch]$NoFrida,
     [switch]$NoLaunch,
-    [string]$Adb = '%USERPROFILE%\devtools\android-sdk\platform-tools\adb.exe',
+    [string]$Adb = 'adb',
     [string]$Pkg = 'com.ryzerobotics.tello'
 )
 
